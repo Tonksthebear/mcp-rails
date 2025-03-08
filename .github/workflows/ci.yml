@@ -15,7 +15,7 @@ jobs:
         appraisal: ['rails-7.2', 'rails-8-sprockets', 'rails-8-propshaft']
       fail-fast: true  # Stop on first failure
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Cache gems
         uses: actions/cache@v4
         with:
