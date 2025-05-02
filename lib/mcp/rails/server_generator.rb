@@ -21,6 +21,8 @@ module MCP
               bypass_csrf_key
             )
             generated_files << file_path
+            ServerWriter.write_wrapper_script(config, file_path, nil)
+            generated_files << file_path
           end
 
           # Process each engine's routes
@@ -38,6 +40,8 @@ module MCP
               bypass_csrf_key,
               engine
             )
+            generated_files << file_path
+            ServerWriter.write_wrapper_script(config, file_path, engine)
             generated_files << file_path
           end
 

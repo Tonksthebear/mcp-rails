@@ -2,7 +2,7 @@
 
 **Enhance Rails routing and parameter handling for LLM agents with MCP (Model Context Protocol) integration.**
 
-`mcp-rails` is a Ruby on Rails gem that builds on top of the [mcp-rb](https://github.com/funwarioisii/mcp-rb) library to seamlessly integrate MCP (Model Context Protocol) servers into your Rails application. It enhances Rails routes by allowing you to tag them with MCP-specific metadata and generates a valid Ruby MCP server (in `tmp/mcp/server.rb`) that LLM agents, such as Goose, can connect to. Additionally, it provides a powerful way to define and manage strong parameters in your controllers, which doubles as both MCP server configuration and Rails strong parameter enforcement.
+`mcp-rails` is a Ruby on Rails gem that builds on top of the [mcp-rb](https://github.com/funwarioisii/mcp-rb) library to seamlessly integrate MCP (Model Context Protocol) servers into your Rails application. It enhances Rails routes by allowing you to tag them with MCP-specific metadata and generates a valid Ruby MCP server (in `tmp/mcp/server.rb`), and wrapper script (in `tmp/mcp/server.sh`) that LLM agents, such as Goose, Claude Desktop, and Cline, can connect to. Additionally, it provides a powerful way to define and manage strong parameters in your controllers, which doubles as both MCP server configuration and Rails strong parameter enforcement.
 
 This was inspired during the creation of [Gaggle](https://github.com/Tonksthebear/gaggle).
 
@@ -32,11 +32,7 @@ Then run:
 bundle install
 ```
 
-Ensure you also have the `mcp-rb` gem installed, as `mcp-rails` depends on it:
-
-```ruby
-gem 'mcp-rb'
-```
+Note, the `mcp-rb` gem will also be installed, which `mcp-rails` depends upon.
 
 ---
 
@@ -49,14 +45,14 @@ MCP::Rails.configure do |config|
   # Server Configuration
   config.server_name = "my-app-server"      # Default: 'mcp-server'
   config.server_version = "2.0.0"           # Default: '1.0.0'
-  
+
   # Output Configuration
   config.output_directory = Rails.root.join("tmp/mcp")  # Default: Rails.root.join('tmp', 'mcp')
   config.bypass_key_path = Rails.root.join("tmp/mcp/bypass_key.txt")  # Default: Rails.root.join('tmp', 'mcp', 'bypass_key.txt')
-  
+
   # Environment Variables
   config.env_vars = ["API_KEY", "ORGANIZATION_ID"]  # Default: ['API_KEY', 'ORGANIZATION_ID']
-  
+
   # Base URL Configuration
   config.base_url = "http://localhost:3000"  # Default: Uses action_mailer.default_url_options
 end
@@ -93,6 +89,7 @@ This is useful for automatically including authentication tokens, organization I
 ### Base URL
 
 The base URL for API requests is determined in the following order:
+
 1. Custom configuration via `config.base_url = "http://example.com"`
 2. Rails `action_mailer.default_url_options` settings
 3. Default fallback to `"http://localhost:3000"`
@@ -141,8 +138,9 @@ end
 ```
 
 The LLM will now provide the exact parameters you're used to with default rails routes, inluding the nesting of resources. For example, the LLM will create a channel with the following params
-```
-  { channel: { name: "Channel Name", user_ids: ["1", "2"] } }
+
+```json
+{ channel: { name: "Channel Name", user_ids: ["1", "2"] } }
 ```
 
 - **MCP Server**: The generated `tmp/mcp/server.rb` will include these parameters, making them available to LLM agents.
@@ -151,6 +149,7 @@ The LLM will now provide the exact parameters you're used to with default rails 
 ### 3. MCP Response Format
 
 MCP-Rails registers a custom MIME type `application/vnd.mcp+json` for MCP-specific responses. This enables:
+
 - Automatic key camelization for MCP protocol compatibility
 - Standardized response wrapping with status and data
 - View template fallbacks
@@ -181,7 +180,7 @@ You can also render MCP responses directly in your controllers:
 class ChannelsController < ApplicationController
   def show
     @channel = Channel.find(params[:id])
-    
+
     respond_to do |format|
       format.json { render json: @channel }
       format.mcp  { render mcp: @channel }  # Keys will be automatically camelized
@@ -222,13 +221,22 @@ end
 
 These descriptions will be used when generating the MCP server, making it clearer to LLM agents what each endpoint does.
 
-### 5. Running the MCP Server
+### 5. Using the MCP Server
 
-After tagging routes and defining parameters, run 
+To integrate your MCP server into an MCP client, such as Gaggle, Claude Desktop, Cline, etc we first need to generate a local CLI wrapper app, which will proxy the LLM MCP requests onwards to the Rails app's MCP API endpoints.
+
+After tagging routes and defining parameters, and each time after adding or modifying the routes, run
 
 ```bash
-  bin/rails mcp:rails:generate_server
+bin/rails mcp:rails:generate_server
 ```
+
+Three files will be generated:
+
+- `tmp/mcp/server.sh` - hard-codes environment variables for the current Ruby/Gems environment
+- `tmp/mcp/server.rb` - describes the available MCP tools, and proxies them to the Rails server, which defaults to <http://localhost:3000>
+- `tmp/mcp/bypass_key.txt` - used to match to `X-Bypass-CSRF` header values
+
 The MCP server will be generated in `tmp/mcp/server.rb`. The server.rb is an executable that attempts to find the closest Gemfile to the file and executes the server using that Gemfile.
 
 If any engines are registered, the server will be generated for each engine as well.
@@ -236,9 +244,26 @@ If any engines are registered, the server will be generated for each engine as w
 LLM agents can now connect to this server and interact with your application via HTTP requests.
 
 For an agent like Goose, you can use this new server with
+
+```plain
+goose session --with-extension "path_to/tmp/mcp/server.sh"
 ```
-goose session --with-extension "path_to/tmp/mcp/server.rb"
+
+For Claude Desktop, edit the `claude_desktop_config.json` file and pass the full path to `tmp/mcp/server.sh` as the `"command"`.
+
+For example,
+
+```json
+{
+  "globalShortcut": "",
+  "mcpServers": {
+    "test_mcp_server": {
+      "command": "/home/me/apps/test-mcp-server/tmp/mcp/server.sh"
+    }
+  }
+}
 ```
+
 ---
 
 ## Testing Your MCP Server
@@ -258,6 +283,7 @@ end
 ```
 
 The helper automatically:
+
 - Creates a temporary directory for server files
 - Configures MCP-Rails to use this directory
 - Generates the MCP server files
@@ -276,16 +302,16 @@ The helper automatically:
 ```ruby
 class MCPChannelTest < ActionDispatch::IntegrationTest
   include MCP::Rails::TestHelper
-  
+
   test "creates a channel via MCP" do
     server = mcp_server
-    
+
     mcp_tool_call(
       server,
       "create_channel",
       channel: { name: "General", user_ids: ["1", "2"] }
     )
-    
+
     assert_equal false, mcp_response_body.dig(:result, :isError)
     assert_equal "Channel created successfully", mcp_response_body.dig(:result, :message)
   end
@@ -364,9 +390,11 @@ end
 The `tmp/mcp/server.rb` file will include an MCP server that exposes `/channels` (GET) and `/channels` (POST) with the defined parameters, allowing an LLM agent to interact with your app.
 
 For use with something like [Goose](https://github.com/block/goose):
-```
+
+```bash
 goose session --with-extension "ruby path_to/tmp/mcp/server.rb"
 ```
+
 ---
 
 ## Requirements
@@ -398,6 +426,6 @@ This gem is available as open source under the terms of the [MIT License](https:
 ## Acknowledgments
 
 - Built on top of the excellent `mcp-rb` library.
-- Designed with LLM agents like Goose in mind.
+- Designed with LLM agents like Goose, Claude Desktop, Cline, etc in mind.
 
 ---

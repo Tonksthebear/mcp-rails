@@ -146,6 +146,31 @@ module MCP
         normalized_content = content.gsub(/\s+/, "").gsub(/\\"/, '"')
         assert_match(nested_parameters, normalized_content)
       end
+
+      test "generates executable wrapper script with correct content" do
+        server_rb_paths = @generator.generate_files
+        refute_empty server_rb_paths, "No server files were generated"
+
+        server_rb_paths.each do |server_rb_path|
+          wrapper_sh_path = server_rb_path.sub(/\.rb$/, ".sh")
+
+          assert File.exist?(wrapper_sh_path), "Wrapper script #{wrapper_sh_path} does not exist"
+          assert File.executable?(wrapper_sh_path), "Wrapper script #{wrapper_sh_path} is not executable"
+
+          content = File.read(wrapper_sh_path)
+
+          # Verify shebang
+          assert_match(/^#!\/bin\/bash/, content.lines.first)
+
+          # Verify environment variable exports (basic check for presence)
+          assert_match(/^export BUNDLE_GEMFILE=/, content)
+          assert_match(/^export GEM_HOME=/, content)
+          assert_match(/^export GEM_PATH=/, content)
+          assert_match(/^export BUNDLE_PATH=/, content)
+          assert_match(/^export PATH=.*:\$PATH/, content) # Check if Ruby bin dir is added to PATH
+          assert_match(/^export LANG=en_US\.UTF-8/, content)
+        end
+      end
     end
   end
 end
