@@ -34,11 +34,12 @@ module MCP
           next if route.verb.downcase == "put"
 
           begin
-            controller_class = "#{route.defaults[:controller].camelize}Controller".constantize
+            controller_name = route.defaults[:controller].split("/").map(&:camelize).join("::") + "Controller"
+            controller_class = controller_name.constantize
             action = route.defaults[:action].to_sym
             params_def = controller_class.permitted_params(action)
-          rescue NameError
-            ::Rails.logger.warn("Controller not found for route: #{route.defaults[:controller]}")
+          rescue NameError => e
+            warn("Controller not found for route: #{route.defaults[:controller]}; #{e.message}")
             next
           end
 
